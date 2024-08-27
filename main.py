@@ -1,16 +1,20 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 
+load_dotenv()
 
 app = FastAPI()
 
-DATABASE_URL = os.environ['DATABASE_URL']
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, sslmode='require', cursor_factory=RealDictCursor)
     return conn
+
 def create_table():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -28,6 +32,24 @@ def create_table():
 @app.on_event("startup")
 def on_startup():
     create_table()
+
+class Item(BaseModel):
+    name: str
+    description: str
+
+@app.post("/items/")
+def create_item(item: Item):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO items (name, description) VALUES (%s, %s) RETURNING *",
+        (item.name, item.description)
+    )
+    new_item = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return new_item
 
 @app.get("/")
 def read_root():
