@@ -1,44 +1,49 @@
-# main.py
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from app.src.config.database import SessionLocal, Base, engine
-from app.src.models.models import Item
-from app.src.crud.crud import get_item, create_item
-from pydantic import BaseModel
+import os
+from fastapi import FastAPI, HTTPException
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 
-# Tworzenie tabel w bazie danych
-Base.metadata.create_all(bind=engine)
+load_dotenv()
 
 app = FastAPI()
 
-# Definicje modeli Pydantic
-class ItemCreate(BaseModel):
-    name: str
-    description: str
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-class ItemRead(BaseModel):
-    id: int
-    name: str
-    description: str
+def get_db_connection():
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    return conn
 
-    class Config:
-        orm_mode = True
+def create_table():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS items (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description TEXT
+    )
+    """)
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-# Funkcja zależności do uzyskania sesji bazy danych
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+@app.on_event("startup")
+def on_startup():
+    create_table()
 
-@app.post("/items/", response_model=ItemRead)
-def create_item_view(item: ItemCreate, db: Session = Depends(get_db)):
-    return create_item(db=db, name=item.name, description=item.description)
+@app.get("/")
+def read_root():
+    return {"message": "Hello, World!"}
 
-@app.get("/items/{item_id}", response_model=ItemRead)
-def read_item_view(item_id: int, db: Session = Depends(get_db)):
-    db_item = get_item(db=db, item_id=item_id)
-    if db_item is None:
+@app.get("/items/{item_id}")
+def read_item(item_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM items WHERE id = %s", (item_id,))
+    item = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
-    return db_item
+    return item
