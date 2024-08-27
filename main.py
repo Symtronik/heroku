@@ -6,7 +6,7 @@ from psycopg2.extras import RealDictCursor
 
 app = FastAPI()
 
-# DATABASE_URL = os.environ("DATABASE_URL")
+DATABASE_URL = os.environ['DATABASE_URL']
 #
 # def get_db_connection():
 #     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
